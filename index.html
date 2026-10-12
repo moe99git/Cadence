@@ -1,0 +1,272 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<title>Cadence</title>
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<meta name="theme-color" content="#0B1020">
+<meta name="color-scheme" content="dark">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+<link rel="manifest" href="manifest.webmanifest">
+<link rel="icon" href="icon-192.png">
+<link rel="apple-touch-icon" href="apple-touch-icon.png">
+<style>
+:root{--accent:#6C8CFF;--bg:#0B1020;--fg:#fff;--mut:rgba(255,255,255,.62)}
+*{box-sizing:border-box;-webkit-tap-highlight-color:transparent}
+html,body{margin:0;min-height:100%;background:var(--bg);color:var(--fg);font-family:system-ui,-apple-system,"Segoe UI",Roboto,sans-serif}
+body{background:linear-gradient(180deg,var(--bg),color-mix(in srgb,var(--accent) 28%,var(--bg)) 50%,var(--bg)) fixed;transition:background .6s}
+main{max-width:480px;margin:0 auto;padding:calc(24px + env(safe-area-inset-top,0px)) 24px calc(32px + env(safe-area-inset-bottom,0px));display:flex;flex-direction:column;align-items:center}
+h1{margin:0;font-size:28px}.sub{margin:4px 0 24px;color:var(--mut)}
+.grid{display:grid;grid-template-columns:1fr 1fr;gap:12px;width:100%}
+.card{border:0;text-align:left;color:inherit;font:inherit;padding:16px;border-radius:20px;background:rgba(255,255,255,.07);cursor:pointer;transition:background .3s}
+.card.sel{background:color-mix(in srgb,var(--accent) 35%,transparent)}
+.card .e{font-size:26px}.card b{display:block;font-size:17px;margin-top:2px}.card small{display:block;color:var(--mut);font-size:12px;margin-top:2px;line-height:1.3}
+.stage{position:relative;width:220px;height:220px;margin:24px 0 4px;display:grid;place-items:center}
+.ring{position:absolute;border-radius:50%;background:color-mix(in srgb,var(--accent) 18%,transparent);width:176px;height:176px;transition:transform .6s}
+.ring.r2{width:140px;height:140px;background:color-mix(in srgb,var(--accent) 28%,transparent)}
+.playing .ring{animation:pulse 5s ease-in-out infinite alternate}.playing .r2{animation-delay:-1s}
+@keyframes pulse{from{transform:scale(.88)}to{transform:scale(1.22)}}
+#play{position:relative;width:96px;height:96px;border-radius:50%;border:0;background:var(--accent);color:#0B1020;display:grid;place-items:center;cursor:pointer;transition:background .4s}
+#play svg{width:34px;height:34px;fill:currentColor}
+#time{font-size:36px;font-weight:300;font-variant-numeric:tabular-nums;margin-bottom:18px}
+.chips{display:flex;gap:8px;margin-bottom:22px}
+.chip{border:1px solid rgba(255,255,255,.25);background:transparent;color:inherit;font:inherit;padding:8px 14px;border-radius:10px;cursor:pointer}
+.chip.sel{background:color-mix(in srgb,var(--accent) 35%,transparent);border-color:var(--accent)}
+label{align-self:flex-start;color:var(--mut);margin-bottom:6px}
+input[type=range]{width:100%;accent-color:var(--accent)}
+#install{margin-top:22px;display:none;border:1px solid var(--accent);background:transparent;color:var(--fg);padding:10px 18px;border-radius:12px;font:inherit}
+.hint{margin-top:18px;color:var(--mut);font-size:12px;text-align:center}
+</style>
+</head>
+<body>
+<main>
+  <h1>Cadence</h1>
+  <p class="sub">Sound for your state of mind</p>
+  <div class="grid" id="grid"></div>
+  <div class="stage"><div class="ring"></div><div class="ring r2"></div><button id="play"></button></div>
+  <div id="time"></div>
+  <div class="chips" id="chips"></div>
+  <label for="depth">Pulse intensity</label>
+  <input type="range" id="depth" min="0.2" max="0.9" step="0.01">
+  <button id="install">Install app</button>
+  <p class="hint" id="hint"></p>
+</main>
+<audio id="sink" playsinline></audio>
+<script>
+const MODES = {
+  focus:{label:'Focus',emoji:'🎯',tag:'Bright, steady music with a fast beta pulse',modHz:16,root:130.81,scale:[0,2,4,7,9],
+    chords:[[0,4,7,11],[-3,0,4,7],[-7,-3,0,4],[-5,2,7,11]],chordSec:8,bpm:72,density:.35,oct:2,decay:1.6,noise:'pink',nl:.12,color:'#6C8CFF'},
+  relax:{label:'Relax',emoji:'🌿',tag:'Warm, flowing music with a gentle alpha pulse',modHz:10,root:110,scale:[0,2,4,7,9],
+    chords:[[0,7,11,16],[-5,0,4,11],[-3,4,7,14],[-7,0,4,9]],chordSec:10,bpm:60,density:.25,oct:2,decay:2.2,noise:'brown',nl:.15,color:'#5BD6A4'},
+  sleep:{label:'Sleep',emoji:'🌙',tag:'Deep, slow drones with a delta drift',modHz:2,root:73.42,scale:[0,3,5,7,10],
+    chords:[[0,7,12,16],[-5,2,7,12],[-3,4,9,12]],chordSec:14,bpm:48,density:.08,oct:2,decay:3.5,noise:'brown',nl:.2,color:'#9B7BFF'},
+  meditate:{label:'Meditate',emoji:'🧘',tag:'Resonant, bowl-like tones with a theta rhythm',modHz:6,root:98,scale:[0,2,5,7,10],
+    chords:[[0,7,12],[-2,5,10],[-5,2,7],[-7,0,5]],chordSec:12,bpm:54,density:.2,oct:1,decay:4.5,noise:'pink',nl:.08,color:'#FFB86B'}
+};
+const state = {mode:'focus',playing:false,depth:.6,timerMin:25,remaining:25*60};
+const $ = s => document.querySelector(s);
+const fmt = s => String(Math.floor(s/60)).padStart(2,'0')+':'+String(s%60).padStart(2,'0');
+const PLAY = '<svg viewBox="0 0 24 24"><path d="M8 5v14l11-7z"/></svg>';
+const PAUSE = '<svg viewBox="0 0 24 24"><path d="M6 5h4v14H6zm8 0h4v14h-4z"/></svg>';
+const isIOS = /iPad|iPhone|iPod/.test(navigator.userAgent) || (navigator.platform==='MacIntel' && navigator.maxTouchPoints>1);
+
+/* ---------- Audio ---------- */
+let ctx, comp, session = null, irBuf = null, endAt = 0, tt = null;
+const noiseBufs = {};
+
+function ensureCtx(){
+  if (ctx) return;
+  ctx = new (window.AudioContext || window.webkitAudioContext)();
+  comp = ctx.createDynamicsCompressor();
+  if (isIOS) comp.connect(ctx.destination);
+  else { // route via <audio> so Android keeps playing in background + lock-screen controls
+    const dest = ctx.createMediaStreamDestination();
+    comp.connect(dest);
+    const a = $('#sink'); a.srcObject = dest.stream;
+  }
+}
+function makeIR(sec=3.2){
+  if (irBuf) return irBuf;
+  const len = ctx.sampleRate*sec|0, b = ctx.createBuffer(2,len,ctx.sampleRate);
+  for (let c=0;c<2;c++){const d=b.getChannelData(c);for(let i=0;i<len;i++)d[i]=(Math.random()*2-1)*Math.pow(1-i/len,2.5);}
+  return irBuf = b;
+}
+function noiseBuffer(type){
+  if (noiseBufs[type]) return noiseBufs[type];
+  const len = ctx.sampleRate*10, b = ctx.createBuffer(1,len,ctx.sampleRate), d = b.getChannelData(0);
+  let b0=0,b1=0,b2=0,b3=0,b4=0,b5=0,b6=0,br=0;
+  for (let i=0;i<len;i++){
+    const w=Math.random()*2-1;
+    if (type==='pink'){
+      b0=.99886*b0+w*.0555179;b1=.99332*b1+w*.0750759;b2=.969*b2+w*.153852;b3=.8665*b3+w*.3104856;
+      b4=.55*b4+w*.5329522;b5=-.7616*b5-w*.016898;
+      d[i]=(b0+b1+b2+b3+b4+b5+b6+w*.5362)*.11;b6=w*.115926;
+    } else { br=(br+.02*w)/1.02; d[i]=br*3.5; }
+  }
+  // crossfade loop seam
+  const xf=ctx.sampleRate*.5|0;
+  for (let i=0;i<xf;i++){const k=i/xf;d[len-xf+i]=d[len-xf+i]*(1-k)+d[i]*k;}
+  return noiseBufs[type]=b;
+}
+
+function startSession(m){
+  const t0 = ctx.currentTime, nodes = [];
+  const out = ctx.createGain(); out.gain.setValueAtTime(0,t0); out.gain.linearRampToValueAtTime(1,t0+3);
+  const am = ctx.createGain(); am.gain.value = 1 - state.depth/2;
+  const lfo = ctx.createOscillator(); lfo.frequency.value = m.modHz;
+  const lfoG = ctx.createGain(); lfoG.gain.value = state.depth/2;
+  lfo.connect(lfoG); lfoG.connect(am.gain); lfo.start(); nodes.push(lfo);
+  am.connect(out); out.connect(comp);
+
+  const music = ctx.createGain(); music.connect(am);
+  const conv = ctx.createConvolver(); conv.buffer = makeIR();
+  const wet = ctx.createGain(); wet.gain.value = .5;
+  music.connect(conv); conv.connect(wet); wet.connect(am);
+
+  const ns = ctx.createBufferSource(); ns.buffer = noiseBuffer(m.noise); ns.loop = true;
+  const ng = ctx.createGain(); ng.gain.value = m.nl*.5; ns.connect(ng); ng.connect(am); ns.start(); nodes.push(ns);
+
+  const hz = st => m.root*Math.pow(2,st/12);
+  const chordF = m.chords.map(c => c.map(hz));
+  const nCh = chordF.length, S = m.chordSec, W = S*1.5;
+  const mk = (f,pan,g,dest) => {
+    const o=ctx.createOscillator(); o.frequency.value=f;
+    const gg=ctx.createGain(); gg.gain.value=g;
+    const p=ctx.createStereoPanner(); p.pan.value=pan;
+    o.connect(gg); gg.connect(p); p.connect(dest); o.start(); nodes.push(o);
+  };
+  const chordG = chordF.map(fs => {
+    const g = ctx.createGain(); g.gain.value = 0; g.connect(music);
+    fs.forEach(f => { mk(f,-.5,.07,g); mk(f*1.002,.5,.07,g); mk(f*2,0,.0175,g); });
+    return g;
+  });
+  const curve = Float32Array.from({length:64},(_,i)=>Math.pow(Math.sin(Math.PI*i/63),2));
+  let cc = 0, nextStep = t0 + .05; const stepDur = 60/m.bpm*.5;
+
+  function addNote(t){
+    const ci = Math.floor((t-t0)/S) % nCh, oct = Math.pow(2,m.oct);
+    const f = Math.random()<.6 ? chordF[ci][Math.random()*chordF[ci].length|0]*oct
+                                : hz(m.scale[Math.random()*m.scale.length|0])*oct;
+    const g = ctx.createGain();
+    g.gain.setValueAtTime(0,t); g.gain.linearRampToValueAtTime(.14,t+.005); g.gain.setTargetAtTime(0,t+.005,m.decay);
+    const p = ctx.createStereoPanner(); p.pan.value = Math.random()-.5;
+    [[1,1],[2,.3],[3,.1]].forEach(([h,a])=>{
+      const o=ctx.createOscillator(); o.frequency.value=f*h;
+      const hg=ctx.createGain(); hg.gain.value=a;
+      o.connect(hg); hg.connect(g); o.start(t); o.stop(t+m.decay*6);
+    });
+    g.connect(p); p.connect(music);
+  }
+  function tick(){
+    const now = ctx.currentTime;
+    while (t0 + cc*S < now + 60){
+      try { chordG[cc%nCh].gain.setValueCurveAtTime(curve, t0+cc*S, W); } catch(e){}
+      cc++;
+    }
+    while (nextStep < now + 10){
+      if (Math.random() < m.density) addNote(nextStep);
+      nextStep += stepDur;
+    }
+  }
+  tick();
+  const iv = setInterval(tick, 1000);
+
+  return {
+    setDepth(d){ am.gain.value = 1 - d/2; lfoG.gain.value = d/2; },
+    stop(quick=.4){
+      clearInterval(iv);
+      const t = ctx.currentTime;
+      out.gain.cancelScheduledValues(t); out.gain.setValueAtTime(out.gain.value,t);
+      out.gain.linearRampToValueAtTime(0,t+quick);
+      setTimeout(()=>{ nodes.forEach(n=>{try{n.stop()}catch(e){}}); try{out.disconnect()}catch(e){} }, quick*1000+100);
+    }
+  };
+}
+
+/* ---------- Controls ---------- */
+async function play(){
+  ensureCtx(); await ctx.resume();
+  if (!isIOS) $('#sink').play().catch(()=>{});
+  session = startSession(MODES[state.mode]);
+  state.playing = true; state.remaining = state.timerMin*60;
+  startTimer(); setMediaSession(); render();
+}
+function pause(){
+  if (session){ session.stop(); session=null; }
+  clearInterval(tt);
+  if (!isIOS) $('#sink').pause();
+  state.playing = false; state.remaining = state.timerMin*60;
+  if ('mediaSession' in navigator) navigator.mediaSession.playbackState='paused';
+  render();
+}
+function startTimer(){
+  clearInterval(tt);
+  if (!state.timerMin) return;
+  endAt = Date.now() + state.remaining*1000;
+  tt = setInterval(()=>{
+    state.remaining = Math.max(0, Math.ceil((endAt-Date.now())/1000));
+    if (state.remaining<=0) pause(); else render();
+  }, 500);
+}
+function setMode(k){
+  state.mode = k;
+  if (state.playing){ session&&session.stop(); session = startSession(MODES[k]); setMediaSession(); }
+  render();
+}
+function setTimer(min){
+  state.timerMin = min; state.remaining = min*60;
+  if (state.playing) startTimer();
+  render();
+}
+function setMediaSession(){
+  if (!('mediaSession' in navigator)) return;
+  const m = MODES[state.mode];
+  navigator.mediaSession.metadata = new MediaMetadata({
+    title: m.label+' session', artist:'Cadence', album: m.tag,
+    artwork:[{src:'icon-512.png',sizes:'512x512',type:'image/png'}]
+  });
+  navigator.mediaSession.playbackState = 'playing';
+  navigator.mediaSession.setActionHandler('play', play);
+  navigator.mediaSession.setActionHandler('pause', pause);
+  navigator.mediaSession.setActionHandler('stop', pause);
+}
+
+/* ---------- UI ---------- */
+const grid = $('#grid'), chips = $('#chips');
+Object.entries(MODES).forEach(([k,m])=>{
+  const b = document.createElement('button'); b.className='card'; b.dataset.k=k;
+  b.innerHTML = `<span class="e">${m.emoji}</span><b>${m.label}</b><small>${m.tag}</small>`;
+  b.onclick = ()=>setMode(k); grid.appendChild(b);
+});
+[15,25,45,60,0].forEach(min=>{
+  const b = document.createElement('button'); b.className='chip'; b.dataset.m=min;
+  b.textContent = min? min+'m' : '∞'; b.onclick=()=>setTimer(min); chips.appendChild(b);
+});
+$('#play').onclick = ()=> state.playing ? pause() : play();
+const depth = $('#depth'); depth.value = state.depth;
+depth.oninput = ()=>{ state.depth = +depth.value; session && session.setDepth(state.depth); };
+
+function render(){
+  const m = MODES[state.mode];
+  document.documentElement.style.setProperty('--accent', m.color);
+  document.body.classList.toggle('playing', state.playing);
+  document.querySelectorAll('.card').forEach(c=>c.classList.toggle('sel', c.dataset.k===state.mode));
+  document.querySelectorAll('.chip').forEach(c=>c.classList.toggle('sel', +c.dataset.m===state.timerMin));
+  $('#time').textContent = state.timerMin ? fmt(state.remaining) : 'No timer';
+  $('#play').innerHTML = state.playing ? PAUSE : PLAY;
+  $('#play').setAttribute('aria-label', state.playing ? 'Pause' : 'Play');
+}
+render();
+
+/* ---------- PWA ---------- */
+let deferred;
+window.addEventListener('beforeinstallprompt', e=>{ e.preventDefault(); deferred=e; $('#install').style.display='block'; });
+$('#install').onclick = async ()=>{ if(!deferred) return; deferred.prompt(); await deferred.userChoice; deferred=null; $('#install').style.display='none'; };
+if (isIOS && !window.navigator.standalone) $('#hint').textContent = 'To install: tap Share, then Add to Home Screen. Use headphones for the best effect.';
+else $('#hint').textContent = 'Use headphones for the best effect.';
+if ('serviceWorker' in navigator) window.addEventListener('load', ()=>navigator.serviceWorker.register('./sw.js').catch(()=>{}));
+</script>
+</body>
+</html>
